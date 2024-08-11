@@ -1,0 +1,434 @@
+CREATE DATABASE BookNexus;
+
+
+
+USE BookNexus;
+
+
+
+//Table creations with indexes 
+
+
+
+CREATE TABLE Authors (
+
+    AuthorID INT AUTO_INCREMENT PRIMARY KEY,
+
+    Name VARCHAR(255) NOT NULL,
+
+    Biography TEXT,
+
+    BirthDate DATE,
+
+    INDEX(Name) -- Index for quick search by Author Name
+
+);
+
+
+
+CREATE TABLE Publishers (
+
+    PublisherID INT AUTO_INCREMENT PRIMARY KEY,
+
+    Name VARCHAR(255) NOT NULL,
+
+    Address VARCHAR(255),
+
+    ContactInfo VARCHAR(255),
+
+    INDEX(Name) -- Index for quick search by Publisher Name
+
+);
+
+
+
+CREATE TABLE Genres (
+
+    GenreID INT AUTO_INCREMENT PRIMARY KEY,
+
+    Name VARCHAR(255) NOT NULL,
+
+    Description TEXT,
+
+    INDEX(Name) -- Index for quick search by Genre Name
+
+);
+
+
+
+CREATE TABLE Books (
+
+    BookID INT AUTO_INCREMENT PRIMARY KEY,
+
+    Title VARCHAR(255) NOT NULL,
+
+    AuthorID INT,
+
+    ISBN VARCHAR(13) NOT NULL UNIQUE,
+
+    PublisherID INT,
+
+    Year INT,
+
+    GenreID INT,
+
+    Copies INT,
+
+    Shelf VARCHAR(50),
+
+    AvailableCopies INT, -- Field to store calculated available copies
+
+    FOREIGN KEY (AuthorID) REFERENCES Authors(AuthorID),
+
+    FOREIGN KEY (PublisherID) REFERENCES Publishers(PublisherID),
+
+    FOREIGN KEY (GenreID) REFERENCES Genres(GenreID),
+
+    INDEX(Title), -- Index for quick search by Title
+
+    INDEX(ISBN) -- Index for quick search by ISBN
+
+);
+
+
+
+CREATE TABLE Members (
+
+    MemberID INT AUTO_INCREMENT PRIMARY KEY,
+
+    Name VARCHAR(255) NOT NULL,
+
+    Address VARCHAR(255),
+
+    Email VARCHAR(255) UNIQUE,
+
+    Phone VARCHAR(15),
+
+    INDEX(Name), -- Index for quick search by Member Name
+
+    INDEX(Email) -- Index for quick search by Email
+
+);
+
+
+
+CREATE TABLE Librarians (
+
+    LibrarianID INT AUTO_INCREMENT PRIMARY KEY,
+
+    Name VARCHAR(255) NOT NULL,
+
+    Email VARCHAR(255) UNIQUE,
+
+    Phone VARCHAR(15),
+
+    Role VARCHAR(50),
+
+    INDEX(Name), -- Index for quick search by Librarian Name
+
+    INDEX(Email) -- Index for quick search by Email
+
+);
+
+
+
+CREATE TABLE CheckOutRecords (
+
+    CheckOutID INT AUTO_INCREMENT PRIMARY KEY,
+
+    MemberID INT,
+
+    BookID INT,
+
+    CheckOutDate DATE,
+
+    DueDate DATE,
+
+    ReturnDate DATE,
+
+    FOREIGN KEY (MemberID) REFERENCES Members(MemberID), ON DELETE CASCADE
+
+    FOREIGN KEY (BookID) REFERENCES Books(BookID), ON DELETE CASCADE
+
+    INDEX(MemberID), -- Index for quick search by MemberID
+
+    INDEX(BookID) -- Index for quick search by BookID
+
+);
+
+
+
+CREATE TABLE Reservations (
+
+    ReservationID INT AUTO_INCREMENT PRIMARY KEY,
+
+    MemberID INT,
+
+    BookID INT,
+
+    ReservationDate DATE,
+
+    Status VARCHAR(50),
+
+    FOREIGN KEY (MemberID) REFERENCES Members(MemberID),
+
+    FOREIGN KEY (BookID) REFERENCES Books(BookID),
+
+    INDEX(MemberID), -- Index for quick search by MemberID
+
+    INDEX(BookID) -- Index for quick search by BookID
+
+);
+
+
+
+CREATE TABLE Fines (
+
+    FineID INT AUTO_INCREMENT PRIMARY KEY,
+
+    MemberID INT,
+
+    BookID INT,
+
+    FineAmount DECIMAL(10, 2),
+
+    FineDate DATE,
+
+    Status VARCHAR(50),
+
+    FOREIGN KEY (MemberID) REFERENCES Members(MemberID),
+
+    FOREIGN KEY (BookID) REFERENCES Books(BookID),
+
+    INDEX(MemberID), -- Index for quick search by MemberID
+
+    INDEX(BookID) -- Index for quick search by BookID
+
+);
+
+
+
+DELIMITER $$
+
+
+
+ALTER TABLE CheckOutRecords
+
+ADD CONSTRAINT chk_due_date CHECK (DueDate > CheckOutDate);
+
+
+
+ALTER TABLE Fines
+
+ADD CONSTRAINT chk_fine_amount CHECK 
+
+(FineAmount >= 0);
+
+
+
+ALTER TABLE Books
+
+ADD CONSTRAINT unique_isbn UNIQUE (ISBN);
+
+
+
+ALTER TABLE Members
+
+ADD CONSTRAINT unique_email UNIQUE (Email);
+
+
+
+//Roles for librarian and members 
+
+CREATE ROLE librarian_role;
+
+CREATE ROLE member_role;
+
+
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON Books TO librarian_role;
+
+GRANT SELECT ON Books TO member_role;
+
+
+
+
+
+// Add index commands
+
+
+
+CREATE INDEX idx_member_id ON Members(MemberID);
+
+CREATE INDEX idx_isbn ON Books(ISBN);
+
+
+
+CREATE ROLE librarian_role; 
+
+CREATE ROLE member_role; 
+
+
+
+GRANT SELECT, INSERT, UPDATE, DELETE ONBooks TO librarian_role;
+
+GRANT SELECT ON Books TO member_role;
+
+
+
+//Trigger to update “Available Copies” when books are checkout or returned 
+
+
+
+CREATE TRIGGER AfterCheckOutInsert
+
+AFTER INSERT ON CheckOutRecords
+
+FOR EACH ROW
+
+BEGIN
+
+    UPDATE Books 
+
+    SET AvailableCopies = AvailableCopies - 1
+
+    WHERE BookID = NEW.BookID;
+
+END$$
+
+
+
+CREATE TRIGGER AfterReturnUpdate
+
+AFTER UPDATE ON CheckOutRecords
+
+FOR EACH ROW
+
+BEGIN
+
+    IF NEW.ReturnDate IS NOT NULL THEN
+
+        UPDATE Books 
+
+        SET AvailableCopies = AvailableCopies + 1
+
+        WHERE BookID = NEW.BookID;
+
+    END IF;
+
+END$$
+
+
+
+DELIMITER ;
+
+
+
+//View to List all available books 
+
+
+
+CREATE VIEW AvailableBooks AS
+
+SELECT 
+
+    BookID, 
+
+    Title, 
+
+    AuthorID, 
+
+    ISBN, 
+
+    PublisherID, 
+
+    Year, 
+
+    GenreID, 
+
+    AvailableCopies 
+
+FROM 
+
+    Books 
+
+WHERE 
+
+    AvailableCopies > 0;
+
+
+
+//View overdue checkout books 
+
+
+
+CREATE VIEW OverdueCheckOuts AS
+
+SELECT 
+
+    CheckOutID, 
+
+    MemberID, 
+
+    BookID, 
+
+    CheckOutDate, 
+
+    DueDate, 
+
+    ReturnDate 
+
+FROM 
+
+    CheckOutRecords 
+
+WHERE 
+
+    DueDate < CURDATE() 
+
+    AND ReturnDate IS NULL;
+
+
+
+//Sample Data to be inserted
+
+
+
+INSERT INTO Members (MemberID, Name, Address, Email, Phone)
+
+VALUES (1, 'John Doe', '123 Elm St', 'john.doe@example.com', '555-1234');
+
+
+
+INSERT INTO Books (ISBN, Title, AuthorID, PublisherID, Year, GenreID, Copies)
+
+VALUES ('978-3-16-148410-0', 'Book Title', 1, 1, 2023, 1, 3);
+
+
+
+INSERT INTO Authors (AuthorID, Name, Biography, BirthDate) VALUES (1, 'Jane Doe', 'A prolific author of educational materials.', '1970-05-15'); 
+
+
+
+INSERT INTOPublishers (PublisherID, Name, Address, ContactInfo) VALUES (1, 'Example Publishing', '456 Oak St', 'contact@example.com'); 
+
+
+
+INSERT INTO Genres (GenreID, Name, Description) VALUES (1, 'Science Fiction', 'A genre of speculative fiction.'); -- Foreign Key Cascade Example Data 
+
+
+
+INSERT INTO CheckOutRecords (MemberID, ISBN, CheckOutDate, DueDate) VALUES (1, '978-3-16-148410-0', '2024-08-10', '2024-08-17'); 
+
+
+
+INSERT INTO Fines (MemberID, ISBN, FineAmount, FineDate, Status) VALUES (1, '978-3-16-148410-0', 10.00, '2024-08-18', 'Pending');
+
+
+
+
+
+
+
+
+
